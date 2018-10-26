@@ -103,7 +103,7 @@ docs/source/scripts/activation_images/
 *.obj
 
 # Compiled Dynamic libraries
-*.so
+#*.so
 *.dylib
 *.dll
 

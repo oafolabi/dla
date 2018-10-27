@@ -165,7 +165,11 @@ def validate(val_loader, model, criterion, eval_score=None, print_freq=10):
                                torch.nn.modules.loss.MSELoss]:
             target = target.float()
         input = input.cuda()
+<<<<<<< HEAD
         target = target.cuda(non_blocking=True)
+=======
+        target = target.cuda(async=True)
+>>>>>>> origin/master
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
@@ -251,7 +255,11 @@ def train(train_loader, model, criterion, optimizer, epoch,
             target = target.float()
 
         input = input.cuda()
+<<<<<<< HEAD
         target = target.cuda(non_blocking=True)
+=======
+        target = target.cuda(async=True)
+>>>>>>> origin/master
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 

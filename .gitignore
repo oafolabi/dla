@@ -15,7 +15,7 @@ EAD THIS BEFORE YOU REFACTOR ME
 */**/*.dylib*
 */**/*.pyc
 */**/*.pyd
-*/**/*.so*
+#*/**/*.so*
 */**/**/*.pyc
 */**/**/**/*.pyc
 */**/**/**/**/*.pyc

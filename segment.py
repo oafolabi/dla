@@ -67,12 +67,16 @@ class SegList(torch.utils.data.Dataset):
         self.image_list = None
         self.label_list = None
         self.bbox_list = None
+        self.guess_list = None
         self.out_size = out_size
         self.binary = binary
         self.read_lists()
 
     def __getitem__(self, index):
         image = Image.open(join(self.data_dir, self.image_list[index]))
+        if self.guess_list is not None:
+            alpha_channel = Image.open(join(self.data_dir, self.guess_list[index]))
+            image.putalpha(alpha_channel)
         data = [image]
         if self.label_list is not None:
             label_map = Image.open(join(self.data_dir, self.label_list[index]))
@@ -98,6 +102,7 @@ class SegList(torch.utils.data.Dataset):
         image_path = join(self.list_dir, self.phase + '_images.txt')
         label_path = join(self.list_dir, self.phase + '_labels.txt')
         bbox_path = join(self.list_dir, self.phase + '_bboxes.txt')
+        guess_path = join(self.list_dir, self.phase +'_layouts.txt')
         assert exists(image_path)
         self.image_list = [line.strip() for line in open(image_path, 'r')]
         if exists(label_path):
@@ -106,6 +111,9 @@ class SegList(torch.utils.data.Dataset):
         if exists(bbox_path):
             self.bbox_list = [line.strip() for line in open(bbox_path, 'r')]
             assert len(self.image_list) == len(self.bbox_list)
+        if exists(guess_path):
+            self.guess_list = [line.strip() for line in open(guess_path, 'r')]
+            assert len(self.image_list) == len(self.guess_list)
 
 
 class SegListMS(torch.utils.data.Dataset):
@@ -165,11 +173,7 @@ def validate(val_loader, model, criterion, eval_score=None, print_freq=10):
                                torch.nn.modules.loss.MSELoss]:
             target = target.float()
         input = input.cuda()
-<<<<<<< HEAD
         target = target.cuda(non_blocking=True)
-=======
-        target = target.cuda(async=True)
->>>>>>> origin/master
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)
 
@@ -255,11 +259,7 @@ def train(train_loader, model, criterion, optimizer, epoch,
             target = target.float()
 
         input = input.cuda()
-<<<<<<< HEAD
         target = target.cuda(non_blocking=True)
-=======
-        target = target.cuda(async=True)
->>>>>>> origin/master
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -308,9 +308,12 @@ def train_seg(args):
     for k, v in args.__dict__.items():
         print(k, ':', v)
 
+    n_input_channels =3 
+    if args.with_guess:
+        n_input_channels = 4
     pretrained_base = args.pretrained_base
     single_model = dla_up.__dict__.get(args.arch)(
-        args.classes, pretrained_base, down_ratio=args.down)
+        args.classes, pretrained_base, down_ratio=args.down, n_input_channels=n_input_channels)
     model = torch.nn.DataParallel(single_model).cuda()
     if args.edge_weight > 0:
         weight = torch.from_numpy(
@@ -597,9 +600,11 @@ def test_seg(args):
 
     for k, v in args.__dict__.items():
         print(k, ':', v)
-
+    n_input_channels =3 
+    if args.with_guess:
+        n_input_channels = 4
     single_model = dla_up.__dict__.get(args.arch)(
-        args.classes, down_ratio=args.down)
+        args.classes, down_ratio=args.down, n_input_channels=n_input_channels)
 
     model = torch.nn.DataParallel(single_model).cuda()
 
@@ -714,6 +719,7 @@ def parse_args():
     parser.add_argument('--edge-weight', type=int, default=-1)
     parser.add_argument('--test-suffix', default='')
     parser.add_argument('--with-gt', action='store_true')
+    parser.add_argument('--with-guess', action='store_true', default=False)
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 

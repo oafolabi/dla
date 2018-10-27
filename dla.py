@@ -222,13 +222,14 @@ class Tree(nn.Module):
 class DLA(nn.Module):
     def __init__(self, levels, channels, num_classes=1000,
                  block=BasicBlock, residual_root=False, return_levels=False,
-                 pool_size=7, linear_root=False):
+                 pool_size=7, linear_root=False, n_input_channels=3):
         super(DLA, self).__init__()
+        self.n_input_channels = n_input_channels
         self.channels = channels
         self.return_levels = return_levels
         self.num_classes = num_classes
         self.base_layer = nn.Sequential(
-            nn.Conv2d(3, channels[0], kernel_size=7, stride=1,
+            nn.Conv2d(n_input_channels, channels[0], kernel_size=7, stride=1,
                       padding=3, bias=False),
             BatchNorm(channels[0]),
             nn.ReLU(inplace=True))

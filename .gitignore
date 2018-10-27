@@ -69,7 +69,8 @@ torch/lib/torch_shm_manager
 torch/lib/python*
 torch/share/
 torch/version.py
-
+*.pth.tar
+*.tar
 # IPython notebook checkpoints
 .ipynb_checkpoints
 

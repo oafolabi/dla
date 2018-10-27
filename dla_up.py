@@ -122,12 +122,12 @@ class DLAUp(nn.Module):
 
 class DLASeg(nn.Module):
     def __init__(self, base_name, classes,
-                 pretrained_base=None, down_ratio=2):
+                 pretrained_base=None, down_ratio=2, n_input_channels=3):
         super(DLASeg, self).__init__()
         assert down_ratio in [2, 4, 8, 16]
         self.first_level = int(np.log2(down_ratio))
         self.base = dla.__dict__[base_name](pretrained=pretrained_base,
-                                            return_levels=True)
+                                            return_levels=True, n_input_channels=n_input_channels)
         channels = self.base.channels
         scales = [2 ** i for i in range(len(channels[self.first_level:]))]
         self.dla_up = DLAUp(channels[self.first_level:], scales=scales)

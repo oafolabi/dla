@@ -81,18 +81,20 @@ class SegList(torch.utils.data.Dataset):
         self.read_lists()
 
     def __getitem__(self, index):
-        image = Image.open(join(self.data_dir, self.image_list[index]))
-        data = [image]
+        image = [Image.open(join(self.data_dir, self.image_list[index]))]
+        
         #print(np.asarray(image).shape)
         if self.normals_list is not None:
             normals_image = Image.open(join(self.data_dir, self.normals_list[index]))
-            data.append(normals_image)
+            image.append(normals_image)
         if self.depth_list is not None:
             depth_image = Image.open(join(self.data_dir, self.depth_list[index]))
-            data.append(depth_image)
+            image.append(depth_image)
         if self.guess_list is not None:
             guess_image = Image.open(join(self.data_dir, self.guess_list[index]))
-            data.append(guess_image)
+            image.append(guess_image)
+
+        data = [image]
         
         if self.label_list is not None:
             label_map = Image.open(join(self.data_dir, self.label_list[index]))
@@ -105,10 +107,10 @@ class SegList(torch.utils.data.Dataset):
         data = list(self.transforms(*data))
         if self.out_name:
             if self.label_list is None:
-                data.append(data[0][0, :, :])
+                data.append(data[0][0][0, :, :])
             data.append(self.image_list[index])
         if self.out_size:
-            data.append(torch.from_numpy(np.array(image.size, dtype=int)))
+            data.append(torch.from_numpy(np.array(image[0].size, dtype=int)))
         return tuple(data)
 
     def __len__(self):

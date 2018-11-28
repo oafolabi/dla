@@ -200,8 +200,11 @@ def validate(val_loader, model, criterion, eval_score=None, print_freq=10):
             target = target.float()
         input = input.cuda()
         target = target.cuda(non_blocking=True)
-        input_var = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
+        input_var = None
+        target_var = None
+        with torch.no_grad():
+            input_var = torch.autograd.Variable(input)
+            target_var = torch.autograd.Variable(target)
 
         # compute output
         output = model(input_var)[0]
@@ -519,7 +522,9 @@ def test(eval_data_loader, model, num_classes,
     hist = np.zeros((num_classes, num_classes))
     for iter, (image, label, name, size) in enumerate(eval_data_loader):
         data_time.update(time.time() - end)
-        image_var = Variable(image, requires_grad=False, volatile=True)
+        image_var = None
+        with torch.no_grad():
+            image_var = Variable(image, requires_grad=False)
         final = model(image_var)[0]
         _, pred = torch.max(final, 1)
         pred = pred.cpu().data.numpy()

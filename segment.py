@@ -60,7 +60,8 @@ CITYSCAPE_PALLETE = np.asarray([
 
 class SegList(torch.utils.data.Dataset):
     def __init__(self, data_dir, phase, transforms, list_dir=None,
-                 out_name=False, out_size=False, binary=False, with_guess=False):
+                 out_name=False, out_size=False, binary=False, 
+                 with_guess=False, with_depth=False, with_normals=False):
         self.list_dir = data_dir if list_dir is None else list_dir
         self.data_dir = data_dir
         self.out_name = out_name
@@ -70,18 +71,29 @@ class SegList(torch.utils.data.Dataset):
         self.label_list = None
         self.bbox_list = None
         self.guess_list = None
+        self.depth_list = None
+        self.normals_list = None
         self.out_size = out_size
         self.binary = binary
         self.with_guess = with_guess
+        self.with_depth = with_depth
+        self.with_normals= with_normals
         self.read_lists()
 
     def __getitem__(self, index):
         image = Image.open(join(self.data_dir, self.image_list[index]))
-        #print(np.asarray(image).shape)
-        if self.guess_list is not None:
-            alpha_channel = Image.open(join(self.data_dir, self.guess_list[index]))
-            image.putalpha(alpha_channel)
         data = [image]
+        #print(np.asarray(image).shape)
+        if self.normals_list is not None:
+            normals_image = Image.open(join(self.data_dir, self.normals_list[index]))
+            data.append(normals_image)
+        if self.depth_list is not None:
+            depth_image = Image.open(join(self.data_dir, self.depth_list[index]))
+            data.append(depth_image)
+        if self.guess_list is not None:
+            guess_image = Image.open(join(self.data_dir, self.guess_list[index]))
+            data.append(guess_image)
+        
         if self.label_list is not None:
             label_map = Image.open(join(self.data_dir, self.label_list[index]))
             if self.binary:
@@ -107,6 +119,8 @@ class SegList(torch.utils.data.Dataset):
         label_path = join(self.list_dir, self.phase + '_labels.txt')
         bbox_path = join(self.list_dir, self.phase + '_bboxes.txt')
         guess_path = join(self.list_dir, self.phase +'_layouts.txt')
+        depth_path = join(self.list_dir, self.phase +'_depths.txt')
+        normals_path = join(self.list_dir, self.phase +'_normals.txt')
         assert exists(image_path)
         self.image_list = [line.strip() for line in open(image_path, 'r')]
         if exists(label_path):
@@ -118,6 +132,12 @@ class SegList(torch.utils.data.Dataset):
         if (exists(guess_path) and self.with_guess):
             self.guess_list = [line.strip() for line in open(guess_path, 'r')]
             assert len(self.image_list) == len(self.guess_list)
+        if (exists(depth_path) and self.with_depth):
+            self.depth_list = [line.strip() for line in open(depth_path, 'r')]
+            assert len(self.image_list) == len(self.depth_list)
+        if (exists(normals_path) and self.with_normals):
+            self.normals_list = [line.strip() for line in open(normals_path, 'r')]
+            assert len(self.image_list) == len(self.normals_list)
 
 
 class SegListMS(torch.utils.data.Dataset):
@@ -312,9 +332,11 @@ def train_seg(args):
     for k, v in args.__dict__.items():
         print(k, ':', v)
 
-    n_input_channels =3 
-    if args.with_guess:
-        n_input_channels = 4
+
+    data_dir = args.data_dir
+    info = dataset.load_dataset_info(data_dir)
+    n_input_channels = len(info.mean) 
+
     pretrained_base = args.pretrained_base
     single_model = dla_up.__dict__.get(args.arch)(
         args.classes, pretrained_base, down_ratio=args.down, n_input_channels=n_input_channels)
@@ -329,8 +351,7 @@ def train_seg(args):
 
     criterion.cuda()
 
-    data_dir = args.data_dir
-    info = dataset.load_dataset_info(data_dir)
+    
     normalize = transforms.Normalize(mean=info.mean, std=info.std)
     t = []
     if args.random_rotate > 0:
@@ -345,7 +366,8 @@ def train_seg(args):
               normalize])
     train_loader = torch.utils.data.DataLoader(
         SegList(data_dir, 'train', transforms.Compose(t),
-                binary=(args.classes == 2), with_guess=args.with_guess),
+                binary=(args.classes == 2), with_guess=args.with_guess,
+                with_depth=args.with_depth, with_normals=args.with_normals),
         batch_size=batch_size, shuffle=True, num_workers=num_workers,
         pin_memory=True
     )
@@ -355,7 +377,8 @@ def train_seg(args):
             # transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
-        ]), binary=(args.classes == 2), with_guess=args.with_guess),
+        ]), binary=(args.classes == 2), with_guess=args.with_guess,
+        with_depth=args.with_depth, with_normals=args.with_normals),
         batch_size=batch_size, shuffle=False, num_workers=num_workers,
         pin_memory=True
     )
@@ -605,17 +628,18 @@ def test_seg(args):
 
     for k, v in args.__dict__.items():
         print(k, ':', v)
-    n_input_channels =3 
-    if args.with_guess:
-        n_input_channels = 4
+
+    data_dir = args.data_dir
+    info = dataset.load_dataset_info(data_dir)
+    n_input_channels = len(info.mean) 
+   
     single_model = dla_up.__dict__.get(args.arch)(
         args.classes, down_ratio=args.down, n_input_channels=n_input_channels)
 
     model = torch.nn.DataParallel(single_model).cuda()
     #model = single_model.cuda()
 
-    data_dir = args.data_dir
-    info = dataset.load_dataset_info(data_dir)
+   
     normalize = transforms.Normalize(mean=info.mean, std=info.std)
     # scales = [0.5, 0.75, 1.25, 1.5, 1.75]
     scales = [0.5, 0.75, 1.25, 1.5]
@@ -628,7 +652,8 @@ def test_seg(args):
     else:
         data = SegList(data_dir, phase, transforms.Compose(t),
                        out_name=True, out_size=True,
-                       binary=args.classes == 2, with_guess=args.with_guess)
+                       binary=args.classes == 2, with_guess=args.with_guess,
+                       with_depth=args.with_depth, with_normals=args.with_normals)
     test_loader = torch.utils.data.DataLoader(
         data,
         batch_size=batch_size, shuffle=False, num_workers=num_workers,
@@ -726,6 +751,8 @@ def parse_args():
     parser.add_argument('--test-suffix', default='')
     parser.add_argument('--with-gt', action='store_true')
     parser.add_argument('--with-guess', action='store_true', default=False)
+    parser.add_argument('--with-depth', action='store_true', default=False)
+    parser.add_argument('--with-normals', action='store_true', default=False)
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 

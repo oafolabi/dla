@@ -19,8 +19,10 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 
 import dla_up
-import data_transforms as transforms
+import data_transforms2 as transforms
 import dataset
+
+import pdb
 
 try:
     from modules import batchnormsync
@@ -58,7 +60,7 @@ CITYSCAPE_PALLETE = np.asarray([
 
 class SegList(torch.utils.data.Dataset):
     def __init__(self, data_dir, phase, transforms, list_dir=None,
-                 out_name=False, out_size=False, binary=False):
+                 out_name=False, out_size=False, binary=False, with_guess=False):
         self.list_dir = data_dir if list_dir is None else list_dir
         self.data_dir = data_dir
         self.out_name = out_name
@@ -70,10 +72,12 @@ class SegList(torch.utils.data.Dataset):
         self.guess_list = None
         self.out_size = out_size
         self.binary = binary
+        self.with_guess = with_guess
         self.read_lists()
 
     def __getitem__(self, index):
         image = Image.open(join(self.data_dir, self.image_list[index]))
+        #print(np.asarray(image).shape)
         if self.guess_list is not None:
             alpha_channel = Image.open(join(self.data_dir, self.guess_list[index]))
             image.putalpha(alpha_channel)
@@ -111,7 +115,7 @@ class SegList(torch.utils.data.Dataset):
         if exists(bbox_path):
             self.bbox_list = [line.strip() for line in open(bbox_path, 'r')]
             assert len(self.image_list) == len(self.bbox_list)
-        if exists(guess_path):
+        if (exists(guess_path) and self.with_guess):
             self.guess_list = [line.strip() for line in open(guess_path, 'r')]
             assert len(self.image_list) == len(self.guess_list)
 
@@ -252,7 +256,7 @@ def train(train_loader, model, criterion, optimizer, epoch,
         # measure data loading time
         data_time.update(time.time() - end)
 
-        # pdb.set_trace()
+        #pdb.set_trace()
 
         if type(criterion) in [torch.nn.modules.loss.L1Loss,
                                torch.nn.modules.loss.MSELoss]:
@@ -315,6 +319,7 @@ def train_seg(args):
     single_model = dla_up.__dict__.get(args.arch)(
         args.classes, pretrained_base, down_ratio=args.down, n_input_channels=n_input_channels)
     model = torch.nn.DataParallel(single_model).cuda()
+    #model = single_model.cuda()
     if args.edge_weight > 0:
         weight = torch.from_numpy(
             np.array([1, args.edge_weight], dtype=np.float32))
@@ -340,7 +345,7 @@ def train_seg(args):
               normalize])
     train_loader = torch.utils.data.DataLoader(
         SegList(data_dir, 'train', transforms.Compose(t),
-                binary=(args.classes == 2)),
+                binary=(args.classes == 2), with_guess=args.with_guess),
         batch_size=batch_size, shuffle=True, num_workers=num_workers,
         pin_memory=True
     )
@@ -350,7 +355,7 @@ def train_seg(args):
             # transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
-        ]), binary=(args.classes == 2)),
+        ]), binary=(args.classes == 2), with_guess=args.with_guess),
         batch_size=batch_size, shuffle=False, num_workers=num_workers,
         pin_memory=True
     )
@@ -378,7 +383,7 @@ def train_seg(args):
     if args.evaluate:
         validate(val_loader, model, criterion, eval_score=accuracy)
         return
-
+    #pdb.set_trace()
     for epoch in range(start_epoch, args.epochs):
         lr = adjust_learning_rate(args, optimizer, epoch)
         print('Epoch: [{0}]\tlr {1:.06f}'.format(epoch, lr))
@@ -607,6 +612,7 @@ def test_seg(args):
         args.classes, down_ratio=args.down, n_input_channels=n_input_channels)
 
     model = torch.nn.DataParallel(single_model).cuda()
+    #model = single_model.cuda()
 
     data_dir = args.data_dir
     info = dataset.load_dataset_info(data_dir)
@@ -622,7 +628,7 @@ def test_seg(args):
     else:
         data = SegList(data_dir, phase, transforms.Compose(t),
                        out_name=True, out_size=True,
-                       binary=args.classes == 2)
+                       binary=args.classes == 2, with_guess=args.with_guess)
     test_loader = torch.utils.data.DataLoader(
         data,
         batch_size=batch_size, shuffle=False, num_workers=num_workers,

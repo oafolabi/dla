@@ -1,4 +1,4 @@
-EAD THIS BEFORE YOU REFACTOR ME
+# READ THIS BEFORE YOU REFACTOR ME
 #
 # setup.py uses the list of patterns in this file to decide
 # what to delete, but it's not 100% sound.  So, for example,
@@ -208,62 +208,7 @@ caffe2.egg-info
 .vscode
 .vs
 
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-
-A
-
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-B
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-A
-
+# Images
+*.png
+*.jpg
+*.jpeg

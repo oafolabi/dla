@@ -194,41 +194,39 @@ def validate(val_loader, model, criterion, eval_score=None, print_freq=10):
     model.eval()
 
     end = time.time()
-    for i, (input, target) in enumerate(val_loader):
-        if type(criterion) in [torch.nn.modules.loss.L1Loss,
-                               torch.nn.modules.loss.MSELoss]:
-            target = target.float()
-        input = input.cuda()
-        target = target.cuda(non_blocking=True)
-        input_var = None
-        target_var = None
-        with torch.no_grad():
+    with torch.no_grad():
+        for i, (input, target) in enumerate(val_loader):
+            if type(criterion) in [torch.nn.modules.loss.L1Loss,
+                                   torch.nn.modules.loss.MSELoss]:
+                target = target.float()
+            input = input.cuda()
+            target = target.cuda(non_blocking=True)
             input_var = torch.autograd.Variable(input)
             target_var = torch.autograd.Variable(target)
 
-        # compute output
-        output = model(input_var)[0]
-        loss = criterion(output, target_var)
+            # compute output
+            output = model(input_var)[0]
+            loss = criterion(output, target_var)
 
-        # measure accuracy and record loss
-        # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
-        if eval_score is not None:
-            score.update(eval_score(output, target_var), input.size(0))
+            # measure accuracy and record loss
+            # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+            losses.update(loss.data[0], input.size(0))
+            if eval_score is not None:
+                score.update(eval_score(output, target_var), input.size(0))
 
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
 
-        if i % print_freq == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Score {score.val:.3f} ({score.avg:.3f})'.format(
-                    i, len(val_loader), batch_time=batch_time, loss=losses,
-                    score=score), flush=True)
+            if i % print_freq == 0:
+                print('Test: [{0}/{1}]\t'
+                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                      'Score {score.val:.3f} ({score.avg:.3f})'.format(
+                        i, len(val_loader), batch_time=batch_time, loss=losses,
+                        score=score), flush=True)
 
-    print(' * Score {top1.avg:.3f}'.format(top1=score))
+        print(' * Score {top1.avg:.3f}'.format(top1=score))
 
     return score.avg
 
@@ -298,9 +296,9 @@ def train(train_loader, model, criterion, optimizer, epoch,
 
         # measure accuracy and record loss
         # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
+        losses.update(loss.detach().data[0], input.detach().size(0))
         if eval_score is not None:
-            scores.update(eval_score(output, target_var), input.size(0))
+            scores.update(eval_score(output.detach(), target_var.detach()), input.detach().size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -520,36 +518,35 @@ def test(eval_data_loader, model, num_classes,
     data_time = AverageMeter()
     end = time.time()
     hist = np.zeros((num_classes, num_classes))
-    for iter, (image, label, name, size) in enumerate(eval_data_loader):
-        data_time.update(time.time() - end)
-        image_var = None
-        with torch.no_grad():
+    with torch.no_grad():
+        for iter, (image, label, name, size) in enumerate(eval_data_loader):
+            data_time.update(time.time() - end)
             image_var = Variable(image, requires_grad=False)
-        final = model(image_var)[0]
-        _, pred = torch.max(final, 1)
-        pred = pred.cpu().data.numpy()
-        batch_time.update(time.time() - end)
-        prob = torch.exp(final)
-        if save_vis:
-            save_output_images(pred, name, output_dir, size)
-            if prob.size(1) == 2:
-                save_prob_images(prob, name, output_dir + '_prob', size)
-            else:
-                save_colorful_images(pred, name, output_dir + '_color',
-                                     CITYSCAPE_PALLETE)
-        if has_gt:
-            label = label.numpy()
-            hist += fast_hist(pred.flatten(), label.flatten(), num_classes)
-            print('===> mAP {mAP:.3f}'.format(
-                mAP=round(np.nanmean(per_class_iu(hist)) * 100, 2)))
-        end = time.time()
-        print('Eval: [{0}/{1}]\t'
-              'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-              'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
-              .format(iter, len(eval_data_loader), batch_time=batch_time,
-                      data_time=data_time))
-    ious = per_class_iu(hist) * 100
-    print(' '.join('{:.03f}'.format(i) for i in ious))
+            final = model(image_var)[0]
+            _, pred = torch.max(final, 1)
+            pred = pred.cpu().data.numpy()
+            batch_time.update(time.time() - end)
+            prob = torch.exp(final)
+            if save_vis:
+                save_output_images(pred, name, output_dir, size)
+                if prob.size(1) == 2:
+                    save_prob_images(prob, name, output_dir + '_prob', size)
+                else:
+                    save_colorful_images(pred, name, output_dir + '_color',
+                                         CITYSCAPE_PALLETE)
+            if has_gt:
+                label = label.numpy()
+                hist += fast_hist(pred.flatten(), label.flatten(), num_classes)
+                print('===> mAP {mAP:.3f}'.format(
+                    mAP=round(np.nanmean(per_class_iu(hist)) * 100, 2)))
+            end = time.time()
+            print('Eval: [{0}/{1}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
+                  .format(iter, len(eval_data_loader), batch_time=batch_time,
+                          data_time=data_time))
+        ious = per_class_iu(hist) * 100
+        print(' '.join('{:.03f}'.format(i) for i in ious))
     if has_gt:  # val
         return round(np.nanmean(ious), 2)
 

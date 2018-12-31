@@ -6,6 +6,7 @@ import threading
 from os.path import exists, join, split, dirname
 
 import time
+import datetime
 
 import numpy as np
 import shutil
@@ -34,6 +35,8 @@ FORMAT = "[%(asctime)-15s %(filename)s:%(lineno)d %(funcName)s] %(message)s"
 logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+log_dir_name = ''
 
 CITYSCAPE_PALLETE = np.asarray([
     [128, 64, 128],
@@ -325,15 +328,18 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-def train_seg(args):
+def train_seg(args, log_dir_name=''):
     batch_size = args.batch_size
     num_workers = args.workers
     crop_size = args.crop_size
 
     print(' '.join(sys.argv))
-
-    for k, v in args.__dict__.items():
-        print(k, ':', v)
+    
+    with open(log_dir_name + 'README.txt', 'a') as out_file:
+        for k, v in args.__dict__.items():
+            print(k, ':', v)
+            out_file.write("%s:%s\n"%(k,v))
+            print(log_dir_name)
 
 
     data_dir = args.data_dir
@@ -625,13 +631,19 @@ def test_ms(eval_data_loader, model, num_classes, scales,
         return round(np.nanmean(ious), 2)
 
 
-def test_seg(args):
+def test_seg(args, log_dir_name=''):
     batch_size = args.batch_size
     num_workers = args.workers
     phase = args.phase
 
-    for k, v in args.__dict__.items():
-        print(k, ':', v)
+
+    with open(log_dir_name + 'README.txt', 'a') as out_file:
+        for k, v in args.__dict__.items():
+            print(k, ':', v)
+            out_file.write("%s:%s\n"%(k,v))
+           
+    #for k, v in args.__dict__.items():
+    #    print(k, ':', v)
 
     data_dir = args.data_dir
     info = dataset.load_dataset_info(data_dir)
@@ -757,6 +769,7 @@ def parse_args():
     parser.add_argument('--with-guess', action='store_true', default=False)
     parser.add_argument('--with-depth', action='store_true', default=False)
     parser.add_argument('--with-normals', action='store_true', default=False)
+    parser.add_argument('--log-dir',default=None)
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -778,7 +791,57 @@ def main():
             print('batch normalization synchronization across GPUs '
                   'is not imported.')
     if args.cmd == 'train':
-        train_seg(args)
+        log_dir_name = 'log_C'
+        if args.with_guess:
+            log_dir_name = log_dir_name + 'G'
+        if args.with_depth:
+            log_dir_name = log_dir_name + 'D'
+        if args.with_normals: 
+            log_dir_name = log_dir_name + 'N'
+	
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S").replace(' ', '-') 
+        log_dir_name = log_dir_name + '_' +  current_time
+
+        if args.log_dir is None:
+            log_dir_name = './' + log_dir_name
+        else:
+            log_dir_name = args.log_dir + log_dir_name 
+
+        log_dir_name = log_dir_name + '/'
+        if not os.path.isdir(log_dir_name):
+            os.mkdir(log_dir_name)
+
+        #if not os.path.isfile(log_dir_name + 'README.txt'):
+        #    os.mkdir(log_dir_name + 'README.txt')
+		
+        # copy current training file, data files
+        current_file_name = os.path.basename(__file__)	
+        shutil.copyfile('./' + current_file_name, log_dir_name + current_file_name)
+
+        info_filename = join(args.data_dir , 'info.json')
+        shutil.copyfile(info_filename, log_dir_name + 'info.json')
+
+        phases = ['train', 'val', 'test']
+        for phase in phases:
+           m_image_path = join(args.data_dir, phase  + '_images.txt')
+           if os.path.isfile(m_image_path):
+               shutil.copyfile(m_image_path, log_dir_name + phase +  '_images.txt')
+           m_label_path = join(args.data_dir, phase + '_labels.txt')
+           if os.path.isfile(m_label_path):
+               shutil.copyfile(m_label_path, log_dir_name +  phase + '_labels.txt')
+           if args.with_guess:
+               m_guess_path = join(args.data_dir, phase + '_layouts.txt')
+               if os.path.isfile(m_guess_path):
+                   shutil.copyfile(m_guess_path, log_dir_name +  phase + '_layouts.txt')
+           if args.with_depth:
+               m_depth_path = join(args.data_dir, phase + '_depths.txt')
+               if os.path.isfile(m_depth_path):
+                   shutil.copyfile(m_depth_path, log_dir_name +  phase + '_depths.txt')
+           if args.with_normals:
+               m_normals_path = join(args.data_dir, phase  + '_normals.txt')
+               if os.path.isfile(m_normals_path):
+                   shutil.copyfile(m_normals_path, log_dir_name + phase + '_normals.txt')
+        train_seg(args, log_dir_name)
     elif args.cmd == 'test':
         test_seg(args)
 

@@ -19,6 +19,8 @@ from torch import nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 
+from tensorboardX import SummaryWriter
+
 import dla_up
 import data_transforms2 as transforms
 import dataset
@@ -339,7 +341,7 @@ def train_seg(args, log_dir_name=''):
         for k, v in args.__dict__.items():
             print(k, ':', v)
             out_file.write("%s:%s\n"%(k,v))
-            print(log_dir_name)
+            #print(log_dir_name)
 
 
     data_dir = args.data_dir
@@ -428,7 +430,7 @@ def train_seg(args, log_dir_name=''):
 
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
-        checkpoint_path = 'checkpoint_latest.pth.tar'
+        checkpoint_path = log_dir_name + 'checkpoint_latest.pth.tar'
         save_checkpoint({
             'epoch': epoch + 1,
             'arch': args.arch,
@@ -436,7 +438,7 @@ def train_seg(args, log_dir_name=''):
             'best_prec1': best_prec1,
         }, is_best, filename=checkpoint_path)
         if (epoch + 1) % args.save_freq == 0:
-            history_path = 'checkpoint_{:03d}.pth.tar'.format(epoch + 1)
+            history_path = log_dir_name + 'checkpoint_{:03d}.pth.tar'.format(epoch + 1)
             shutil.copyfile(checkpoint_path, history_path)
 
 

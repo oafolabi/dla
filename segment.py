@@ -19,8 +19,6 @@ from torch import nn
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 
-from tensorboardX import SummaryWriter
-
 import dla_up
 import data_transforms2 as transforms
 import dataset
@@ -199,39 +197,39 @@ def validate(val_loader, model, criterion, eval_score=None, print_freq=10):
     model.eval()
 
     end = time.time()
-    with torch.no_grad():
-        for i, (input, target) in enumerate(val_loader):
-            if type(criterion) in [torch.nn.modules.loss.L1Loss,
-                                   torch.nn.modules.loss.MSELoss]:
-                target = target.float()
-            input = input.cuda()
-            target = target.cuda(non_blocking=True)
-            input_var = torch.autograd.Variable(input)
-            target_var = torch.autograd.Variable(target)
+    #with torch.no_grad():
+    for i, (input, target) in enumerate(val_loader):
+        if type(criterion) in [torch.nn.modules.loss.L1Loss,torch.nn.modules.loss.MSELoss]:
+            target = target.float()
+        input = input.cuda()
+        #target = target.cuda(non_blocking=True)
+        target = target.cuda(async=True)
+        input_var = torch.autograd.Variable(input)
+        target_var = torch.autograd.Variable(target)
 
-            # compute output
-            output = model(input_var)[0]
-            loss = criterion(output, target_var)
+        # compute output
+        output = model(input_var)[0]
+        loss = criterion(output, target_var)
 
-            # measure accuracy and record loss
-            # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-            losses.update(loss.data[0], input.size(0))
-            if eval_score is not None:
-                score.update(eval_score(output, target_var), input.size(0))
+        # measure accuracy and record loss
+        # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+        losses.update(loss.data[0], input.size(0))
+        if eval_score is not None:
+            score.update(eval_score(output, target_var), input.size(0))
 
-            # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
 
-            if i % print_freq == 0:
-                print('Test: [{0}/{1}]\t'
-                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Score {score.val:.3f} ({score.avg:.3f})'.format(
-                        i, len(val_loader), batch_time=batch_time, loss=losses,
-                        score=score), flush=True)
+        if i % print_freq == 0:
+            print('Test: [{0}/{1}]\t'
+                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                  'Score {score.val:.3f} ({score.avg:.3f})'.format(
+                    i, len(val_loader), batch_time=batch_time, loss=losses,
+                    score=score), flush=True)
 
-        print(' * Score {top1.avg:.3f}'.format(top1=score))
+    print(' * Score {top1.avg:.3f}'.format(top1=score))
 
     return score.avg
 
@@ -291,7 +289,8 @@ def train(train_loader, model, criterion, optimizer, epoch,
             target = target.float()
 
         input = input.cuda()
-        target = target.cuda(non_blocking=True)
+        #target = target.cuda(non_blocking=True)
+        target = target.cuda(async=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
@@ -301,9 +300,9 @@ def train(train_loader, model, criterion, optimizer, epoch,
 
         # measure accuracy and record loss
         # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.detach().data[0], input.detach().size(0))
+        losses.update(loss.data[0], input.size(0))
         if eval_score is not None:
-            scores.update(eval_score(output.detach(), target_var.detach()), input.detach().size(0))
+            scores.update(eval_score(output, target_var), input.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -346,7 +345,18 @@ def train_seg(args, log_dir_name=''):
 
     data_dir = args.data_dir
     info = dataset.load_dataset_info(data_dir)
-    n_input_channels = len(info.mean) 
+    list_valid_idx = [0,1,2] #RGB
+    if args.with_normals:
+        list_valid_idx.append(3)
+        list_valid_idx.append(4)
+        list_valid_idx.append(5)
+    if args.with_depth:
+        list_valid_idx.append(6) #TODO
+    if args.with_guess:
+        list_valid_idx.append(6)
+    m_mean = [info.mean[m] for m in list_valid_idx]
+    m_std = [info.std[m] for m in list_valid_idx]
+    n_input_channels = len(m_mean) 
 
     pretrained_base = args.pretrained_base
     single_model = dla_up.__dict__.get(args.arch)(
@@ -363,7 +373,7 @@ def train_seg(args, log_dir_name=''):
     criterion.cuda()
 
     
-    normalize = transforms.Normalize(mean=info.mean, std=info.std)
+    normalize = transforms.Normalize(mean=m_mean, std=m_std)
     t = []
     if args.random_rotate > 0:
         t.append(transforms.RandomRotate(args.random_rotate))
@@ -430,7 +440,7 @@ def train_seg(args, log_dir_name=''):
 
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
-        checkpoint_path = log_dir_name + 'checkpoint_latest.pth.tar'
+        checkpoint_path = 'checkpoint_latest.pth.tar'
         save_checkpoint({
             'epoch': epoch + 1,
             'arch': args.arch,
@@ -438,7 +448,7 @@ def train_seg(args, log_dir_name=''):
             'best_prec1': best_prec1,
         }, is_best, filename=checkpoint_path)
         if (epoch + 1) % args.save_freq == 0:
-            history_path = log_dir_name + 'checkpoint_{:03d}.pth.tar'.format(epoch + 1)
+            history_path = 'checkpoint_{:03d}.pth.tar'.format(epoch + 1)
             shutil.copyfile(checkpoint_path, history_path)
 
 

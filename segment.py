@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 from os.path import exists, join, split, dirname
+import multiprocessing as mp
 
 import time
 import datetime
@@ -265,7 +266,7 @@ def accuracy(output, target):
     correct = correct[target != 255]
     correct = correct.view(-1)
     score = correct.float().sum(0).mul(100.0 / correct.size(0))
-    return score.data[0]
+    return score.item()
 
 
 def train(train_loader, model, criterion, optimizer, epoch,
@@ -301,7 +302,7 @@ def train(train_loader, model, criterion, optimizer, epoch,
 
         # measure accuracy and record loss
         # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.detach().data[0], input.detach().size(0))
+        losses.update(loss.detach().item(), input.detach().size(0))
         if eval_score is not None:
             scores.update(eval_score(output.detach(), target_var.detach()), input.detach().size(0))
 
@@ -346,7 +347,21 @@ def train_seg(args, log_dir_name=''):
 
     data_dir = args.data_dir
     info = dataset.load_dataset_info(data_dir)
-    n_input_channels = len(info.mean) 
+    m_list_valid_layers = [0,1,2]
+    if args.with_normals:
+        m_list_valid_layers.append(3)
+        m_list_valid_layers.append(4)
+        m_list_valid_layers.append(5)
+
+    if args.with_depth:
+       m_list_valid_layers.append(6) #TODO: need to fix this
+
+    if args.with_guess:
+       m_list_valid_layers.append(6)
+
+    m_info_mean = [info.mean[m] for m in m_list_valid_layers]
+    m_info_std = [info.std[m] for m in m_list_valid_layers]
+    n_input_channels = len(m_info_mean) 
 
     pretrained_base = args.pretrained_base
     single_model = dla_up.__dict__.get(args.arch)(
@@ -363,7 +378,7 @@ def train_seg(args, log_dir_name=''):
     criterion.cuda()
 
     
-    normalize = transforms.Normalize(mean=info.mean, std=info.std)
+    normalize = transforms.Normalize(mean=m_info_mean, std=m_info_std)
     t = []
     if args.random_rotate > 0:
         t.append(transforms.RandomRotate(args.random_rotate))
@@ -849,4 +864,5 @@ def main():
 
 
 if __name__ == '__main__':
+    mp.set_start_method('forkserver')
     main()

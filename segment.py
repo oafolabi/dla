@@ -197,38 +197,38 @@ def validate(val_loader, model, criterion, eval_score=None, print_freq=10):
     model.eval()
 
     end = time.time()
-    #with torch.no_grad():
-    for i, (input, target) in enumerate(val_loader):
-        if type(criterion) in [torch.nn.modules.loss.L1Loss,torch.nn.modules.loss.MSELoss]:
-            target = target.float()
-        input = input.cuda()
-        #target = target.cuda(non_blocking=True)
-        target = target.cuda(async=True)
-        input_var = torch.autograd.Variable(input)
-        target_var = torch.autograd.Variable(target)
+    with torch.no_grad():
+        for i, (input, target) in enumerate(val_loader):
+            if type(criterion) in [torch.nn.modules.loss.L1Loss,torch.nn.modules.loss.MSELoss]:
+                target = target.float()
+            input = input.cuda()
+            #target = target.cuda(non_blocking=True)
+            target = target.cuda(async=True)
+            input_var = torch.autograd.Variable(input)
+            target_var = torch.autograd.Variable(target)
 
-        # compute output
-        output = model(input_var)[0]
-        loss = criterion(output, target_var)
+            # compute output
+            output = model(input_var)[0]
+            loss = criterion(output, target_var)
 
-        # measure accuracy and record loss
-        # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
-        if eval_score is not None:
-            score.update(eval_score(output, target_var), input.size(0))
+            # measure accuracy and record loss
+            # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
+            losses.update(loss.item(), input.detach().size(0))
+            if eval_score is not None:
+                score.update(eval_score(output.detach(), target_var.detach()), input.detach().size(0))
 
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
 
-        if i % print_freq == 0:
-            print('Test: [{0}/{1}]\t'
-                  'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                  'Score {score.val:.3f} ({score.avg:.3f})'.format(
-                    i, len(val_loader), batch_time=batch_time, loss=losses,
-                    score=score), flush=True)
-
+            if i % print_freq == 0:
+                print('Test: [{0}/{1}]\t'
+                      'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                      'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                      'Score {score.val:.3f} ({score.avg:.3f})'.format(
+                        i, len(val_loader), batch_time=batch_time, loss=losses,
+                        score=score), flush=True)
+    
     print(' * Score {top1.avg:.3f}'.format(top1=score))
 
     return score.avg
@@ -263,7 +263,7 @@ def accuracy(output, target):
     correct = correct[target != 255]
     correct = correct.view(-1)
     score = correct.float().sum(0).mul(100.0 / correct.size(0))
-    return score.data[0]
+    return score.item()
 
 
 def train(train_loader, model, criterion, optimizer, epoch,
@@ -300,9 +300,9 @@ def train(train_loader, model, criterion, optimizer, epoch,
 
         # measure accuracy and record loss
         # prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
-        losses.update(loss.data[0], input.size(0))
+        losses.update(loss.item(), input.detach().size(0))
         if eval_score is not None:
-            scores.update(eval_score(output, target_var), input.size(0))
+            scores.update(eval_score(output.detach(), target_var.detach()), input.detach().size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -323,10 +323,10 @@ def train(train_loader, model, criterion, optimizer, epoch,
                     data_time=data_time, loss=losses, top1=scores))
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, filename='checkpoint.pth.tar', log_dir_name='./'):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
+        shutil.copyfile(filename, os.path.join(log_dir_name, 'model_best.pth.tar'))
 
 
 def train_seg(args, log_dir_name=''):
@@ -441,14 +441,16 @@ def train_seg(args, log_dir_name=''):
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
         checkpoint_path = 'checkpoint_latest.pth.tar'
+        checkpoint_path = os.path.join(log_dir_name, checkpoint_path)
         save_checkpoint({
             'epoch': epoch + 1,
             'arch': args.arch,
             'state_dict': model.state_dict(),
             'best_prec1': best_prec1,
-        }, is_best, filename=checkpoint_path)
+        }, is_best, filename=checkpoint_path, log_dir_name=log_dir_name)
         if (epoch + 1) % args.save_freq == 0:
             history_path = 'checkpoint_{:03d}.pth.tar'.format(epoch + 1)
+            history_path = os.path.join(log_dir_name, history_path)
             shutil.copyfile(checkpoint_path, history_path)
 
 
